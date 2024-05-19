@@ -1,0 +1,178 @@
+---
+title: "Bike_share Analysis"
+author: "Hongyu Mu"
+date: "2024-05-13"
+output: html_document
+---
+
+## Business Task
+Answer the question: How do annual members and casual riders use Cyclistic bikes differently?
+And design marketing strategies aimed at converting casual riders into annual members.#### Why do we need to convert them?
+Cyclistic’s finance analysts have concluded that annual members are much more profitable than casual riders.
+
+#### Key Stakeholders
+Lily Moreno (The director of marketing)
+Cyclistic Executive Team
+
+#### How do annual members and casual riders use Cyclistic bikes differently?
+I am assuming that annual members use Cyclistic bikes as their primary transportation method, so they will use the bikes on a more frequent base, while the casual riders might come across this option at lower frequency. We can check what story the data tells us. The data comes from this [link](https://divvy-tripdata.s3.amazonaws.com/index.html), provided by Motivate International Inc. under this [license](https://divvybikes.com/data-license-agreement)
+
+```{r}
+df_2304 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202304-divvy-tripdata.csv")
+df_2305 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202305-divvy-tripdata.csv")
+df_2306 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202306-divvy-tripdata.csv")
+df_2307 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202307-divvy-tripdata.csv")
+df_2308 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202308-divvy-tripdata.csv")
+df_2309 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202309-divvy-tripdata.csv")
+df_2310 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202310-divvy-tripdata.csv")
+df_2311 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202311-divvy-tripdata.csv")
+df_2312 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202312-divvy-tripdata.csv")
+df_2401 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202401-divvy-tripdata.csv")
+df_2402 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202402-divvy-tripdata.csv")
+df_2403 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202403-divvy-tripdata.csv")
+df_2404 <- read.csv("C:/Users/dell/Desktop/UW/Work/Coursera/google da/Divvy tripdata/202304-202404 dataset/202404-divvy-tripdata.csv")
+```
+```{r}
+library(dplyr)
+df_combined <- bind_rows(df_2304, df_2305, df_2306, df_2307, df_2308, df_2309, df_2310, df_2311, df_2312, df_2401, df_2402, df_2403, df_2404)
+# Let's view the tail of the combined data to see if all the data sets have been successfully appended by row.
+tail(df_combined)
+```
+Now we try to capture the empty and null values in the data frame and drop the corresponding rows.
+```{r}
+df_combined[df_combined == ""] <- NA
+num_null_rows <- sum(!complete.cases(df_combined))
+print(num_null_rows)
+# Calculate null percentage to see what data manipulation we will need
+null_percentage <- num_null_rows / nrow(df_combined)
+print(null_percentage)
+```
+Since the rows containing null values consist only a quarter of all the combined data, I decide to drop all of them. Also we don't need the information about the start station id, the end station id, and the data of latitudes and longitudes, so I will drop those columns as well.
+```{r}
+df_drop <- df_combined %>% 
+  # drop all the rows with null values
+  filter(complete.cases(df_combined), ) %>% 
+  select(-c(start_station_id, end_station_id, start_lat, end_lat, start_lng, end_lng))
+print(sum(is.na(df_drop)))
+```
+Now that I have cleared all the rows with null values, I want to further clean it up by making sure the data types are consistent, and I will add a column calculating the ride duration for each record for later analysis.
+```{r}
+str(df_drop)
+```
+The start and end time columns are characters, but they should be set as actual time stamps.
+```{r}
+# Function to count colons in each string and append ":00" if there's only one colon
+adjust_strings <- function(string) {
+  colons <- gregexpr(":", string)[[1]]
+  if (length(colons) == 1) {
+    return(paste0(string, ":00"))
+  } else {
+    return(string)
+  }
+}
+
+# Adjust strings in the list
+df_drop$started_at <- sapply(df_drop$started_at, adjust_strings)
+df_drop$ended_at <- sapply(df_drop$ended_at, adjust_strings)
+
+# All the start and end time are in the format of "%Y-%m-%d %H:%M:%S" now, and I can therefore convert them all to datetime objects
+df_drop$started_at <- as.POSIXct(df_drop$started_at, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+df_drop$ended_at <- as.POSIXct(df_drop$ended_at, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+# drop null values one more time as some of the timestamps are not converted and resulted in NA cells
+df_dropmore <- filter(df_drop, complete.cases(df_drop))
+df_dropmore$ride_length <- df_dropmore$ended_at - df_dropmore$started_at
+head(df_dropmore)
+```
+I have the ride length of all records calculated, finally, after struggling for an hour dealing with the data types and popped-up null values. Hooray!
+```{r}
+Sys.setlocale("LC_TIME", "en_US.UTF-8")
+df_dropmore$day_of_week <- weekdays(df_dropmore$started_at)
+str(df_dropmore)
+```
+```{r}
+df_dropmore$ride_length <- as.numeric(df_dropmore$ride_length)
+# there might be outliers to the data
+max_row <- which.max(df_dropmore$ride_length)
+print(df_dropmore[max_row,])
+min_row <- which.min(df_dropmore$ride_length)
+print(df_dropmore[min_row,])
+```
+We found that the minimum ride length (in seconds) is below 0, which does not comply with any logical record, so we need to drop this row and all other rows with negative ride length values.
+```{r}
+# further filter the data set
+df_pos_rl <- df_dropmore[df_dropmore$ride_length >= 0,]
+min_row <- which.min(df_pos_rl$ride_length)
+print(df_pos_rl[min_row,])
+# The last step is to remove any duplicate in the ride_id since it's the unique key
+df_cleaned <- distinct(df_pos_rl, ride_id, .keep_all = TRUE)
+```
+All the ride length values are from distinct rides and are non-negative now, and we can try finding the mean values.
+```{r}
+mean_values_day <- df_cleaned %>%
+  # applying 2 categorical variables for the comparison
+  group_by(day_of_week, member_casual) %>%
+  summarize(mean_value = mean(ride_length)) %>% 
+  arrange(mean_value)
+print(mean_values_day)
+```
+Let draw a barplot to visualize the distribution grouping by day of the week.
+```{r}
+library(ggplot2)
+mean_values_day$day_of_week <- factor(mean_values_day$day_of_week, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+ggplot(mean_values_day, aes(x = day_of_week, y = mean_value, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Average ride_length by day", x = "Day of week", y = "Average") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+mean_values_type <- df_cleaned %>%
+  # examining the ride length based on types of bikes that riders use
+  group_by(rideable_type, member_casual) %>%
+  summarize(mean_value = mean(ride_length)) %>% 
+  arrange(mean_value)
+print(mean_values_type)
+```
+```{r}
+ggplot(mean_values_type, aes(x = rideable_type, y = mean_value, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Average ride_length by type", x = "Bike Types", y = "Average") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+I would also like to investigate the amount of rides that different riders have.
+```{r}
+day_counts <- df_cleaned %>%
+  group_by(member_casual, day_of_week) %>%
+  count() %>% 
+  arrange(n)
+print(day_counts)
+```
+```{r}
+day_counts$day_of_week <- factor(day_counts$day_of_week, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+ggplot(day_counts, aes(x = day_of_week, y = n, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Counts of rides by day",
+       x = "Day of Week", y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+type_counts <- df_cleaned %>%
+  group_by(member_casual, rideable_type) %>%
+  count() %>% 
+  arrange(n)
+print(type_counts)
+```
+
+```{r}
+ggplot(type_counts, aes(x = rideable_type, y = n, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Counts of rides by type",
+       x = "Types", y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+Let's wrap everything up with the stories that the data tells us. 
+* The casual riders still averaged in much longer riding time. 
+* Members use the shared bikes more frequently than casual riders, especially over the weekdays.
+So in order for Cyclistic to convert more casual riders to annual members, the 2 changes they can make are:
+* Providing benefits for longer rides to members.
+* Providing weekday discounts to members.
